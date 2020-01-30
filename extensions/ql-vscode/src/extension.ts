@@ -17,6 +17,7 @@ import { QueryHistoryManager } from './query-history';
 import * as qsClient from './queryserver-client';
 import { CodeQLCliServer } from './cli';
 import { assertNever } from './helpers-pure';
+import { displayQuickQuery } from './quick-query';
 import { TestHub, testExplorerExtensionId } from 'vscode-test-adapter-api';
 import { QLTestAdapterFactory } from './test-adapter';
 import { TestUIService } from './test-ui';
@@ -318,6 +319,7 @@ async function activateWithInstalledDistribution(ctx: ExtensionContext, distribu
 
   ctx.subscriptions.push(commands.registerCommand('codeQL.runQuery', async (uri: Uri | undefined) => await compileAndRunQuery(false, uri)));
   ctx.subscriptions.push(commands.registerCommand('codeQL.quickEval', async (uri: Uri | undefined) => await compileAndRunQuery(true, uri)));
+  ctx.subscriptions.push(commands.registerCommand('codeQL.quickQuery', async () => displayQuickQuery(ctx, cliServer, databaseUI)));
 
   ctx.subscriptions.push(client.start());
 }

@@ -9,7 +9,7 @@
       "program": "${workspaceFolder}/tools/scrape-logs/out/index.js",
       "args": [
         "profile",
-        "--log", "C:\\Src\\Snapshots\\awslabs_s2n_ebbf30f\\log\\execute-queries-20200117.131036.055.log"
+        "--log", "${relativeFile}"
       ],
       "skipFiles": [
         "<node_internals>/**"

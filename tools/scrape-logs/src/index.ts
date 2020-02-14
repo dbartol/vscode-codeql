@@ -34,7 +34,8 @@ async function main(): Promise<void> {
         events.push({
           duration: event.duration,
           predicate: event.predicate,
-          rows: event.rows
+          rows: event.rows,
+          columns: event.columns
         });
         break;
 
@@ -42,7 +43,8 @@ async function main(): Promise<void> {
         events.push({
           duration: event.duration,
           predicate: event.predicate,
-          rows: event.rows
+          rows: event.rows,
+          columns: event.columns
         });
         break;
 
@@ -52,14 +54,21 @@ async function main(): Promise<void> {
             return  iteration.predicates.map((predicate, predicateIndex) => {
               return {
                 predicate: event.predicates[predicateIndex].currentDeltaPredicate,
-                rows: predicate.rows
+                rows: predicate.rows,
+                columns: event.predicates[predicateIndex].arity
               };
             });
           });
 
           events.push({
             duration: event.duration,
-            predicates: event.predicates.map(predicate => predicate.predicate),
+            predicates: event.predicates.map(predicate => {
+              return {
+                predicate: predicate.predicate,
+                rows: predicate.rows,
+                columns: predicate.arity
+              };
+            }),
             iterations: iterations.length
           });
         }

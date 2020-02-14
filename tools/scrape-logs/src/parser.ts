@@ -102,33 +102,40 @@ export class Parser {
   }
 
   public async parseEvent(): Promise<ProfileEvent | undefined> {
-    const firstLine = await this.lineBuffer.peek();
-    switch (firstLine.kind) {
-      case ProfileLineKind.END_OF_FILE:
-        await this.lineBuffer.read();
-        return undefined;
+    while (true) {
+      const firstLine = await this.lineBuffer.peek();
+      switch (firstLine.kind) {
+        case ProfileLineKind.END_OF_FILE:
+          await this.lineBuffer.read();
+          return undefined;
 
-      case ProfileLineKind.START_PREDICATE_EVALUATION:
-        return await this.parsePredicateEvaluation();
+        case ProfileLineKind.START_PREDICATE_EVALUATION: {
+          const evaluation = await this.parsePredicateEvaluation();
+          if (evaluation !== undefined) {
+            return evaluation;
+          }
+        }
+          break;
 
-      case ProfileLineKind.START_HOP_EVALUATION:
-        return await this.parseHopEvaluation();
+        case ProfileLineKind.START_HOP_EVALUATION:
+          return await this.parseHopEvaluation();
 
-      case ProfileLineKind.START_RECURSIVE_PREDICATE_EVALUATION:
-        return await this.parseSccEvaluation();
+        case ProfileLineKind.START_RECURSIVE_PREDICATE_EVALUATION:
+          return await this.parseSccEvaluation();
 
-      case ProfileLineKind.INFERRED_EMPTY_RELATION:
-        return await this.parseEmptyRelation();
+        case ProfileLineKind.INFERRED_EMPTY_RELATION:
+          return await this.parseEmptyRelation();
 
-      case ProfileLineKind.WROTE_RELATION:
-        return await this.parseDatabaseTableEvaluation();
+        case ProfileLineKind.WROTE_RELATION:
+          return await this.parseDatabaseTableEvaluation();
 
-      case ProfileLineKind.ACCUMULATING_DELTAS:
-        return await this.parseAccumulatingDeltas();
+        case ProfileLineKind.ACCUMULATING_DELTAS:
+          return await this.parseAccumulatingDeltas();
 
-      default:
-        await this.lineBuffer.read();
-        reportError(firstLine.lineNumber, `Unexpected line: '${firstLine.kind}'.`);
+        default:
+          await this.lineBuffer.read();
+          reportError(firstLine.lineNumber, `Unexpected line: '${firstLine.kind}'.`);
+      }
     }
   }
 
@@ -152,7 +159,7 @@ export class Parser {
     };
   }
 
-  private async parsePredicateEvaluation(): Promise<PredicateEvaluationEvent> {
+  private async parsePredicateEvaluation(): Promise<PredicateEvaluationEvent | undefined> {
     const startLine = <StartPredicateEvaluationLine>await this.lineBuffer.expect(ProfileLineKind.START_PREDICATE_EVALUATION);
 
     const tupleCountLine = <TupleCountsLine>await this.lineBuffer.expect(ProfileLineKind.TUPLE_COUNTS);
@@ -162,24 +169,33 @@ export class Parser {
 
     const instructions = await this.parseRAInstructions();
 
-    const wroteRelationLine = <WroteRelationLine>await this.lineBuffer.expect(ProfileLineKind.WROTE_RELATION);
-    if (wroteRelationLine.predicate !== startLine.predicate) {
-      reportError(wroteRelationLine.lineNumber, `Mismatched predicate: expected '${startLine.predicate}', but got '${wroteRelationLine.predicate}'.`);
-    }
+    const endLine = await this.lineBuffer.expect(ProfileLineKind.WROTE_RELATION, ProfileLineKind.INCOMPLETE_PREDICATE);
+    switch (endLine.kind) {
+      case ProfileLineKind.WROTE_RELATION:
+        if (endLine.predicate !== startLine.predicate) {
+          reportError(endLine.lineNumber, `Mismatched predicate: expected '${startLine.predicate}', but got '${endLine.predicate}'.`);
+        }
 
-    return {
-      kind: ProfileEventKind.PREDICATE_EVALUATION,
-      elapsedSeconds: startLine.elapsedSeconds,
-      duration: wroteRelationLine.elapsedSeconds - startLine.elapsedSeconds,
-      predicate: startLine.predicate,
-      arity: startLine.arity,
-      hash: startLine.hash,
-      operation: {
-        instructions: instructions
-      },
-      rows: wroteRelationLine.rows,
-      columns: wroteRelationLine.columns
-    };
+        return {
+          kind: ProfileEventKind.PREDICATE_EVALUATION,
+          elapsedSeconds: startLine.elapsedSeconds,
+          duration: endLine.elapsedSeconds - startLine.elapsedSeconds,
+          predicate: startLine.predicate,
+          arity: startLine.arity,
+          hash: startLine.hash,
+          operation: {
+            instructions: instructions
+          },
+          rows: endLine.rows,
+          columns: endLine.columns
+        };
+
+      case ProfileLineKind.INCOMPLETE_PREDICATE:
+        return undefined;
+
+      default:
+        throw new Error('Unexpected.');
+    }
   }
 
   private async parseEmptyRelation(): Promise<PredicateEvaluationEvent> {

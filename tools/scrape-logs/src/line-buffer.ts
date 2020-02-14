@@ -14,7 +14,8 @@ export enum ProfileLineKind {
   HOP_RELATION = 'hop_relation',
   DELTA_ROW_COUNT = 'delta_row_count',
   EMPTY_DELTA = 'empty_delta',
-  ACCUMULATING_DELTAS = 'accumulating_deltas'
+  ACCUMULATING_DELTAS = 'accumulating_deltas',
+  INCOMPLETE_PREDICATE = 'incomplete_predicate'
 }
 
 export interface ProfileLineBase {
@@ -100,8 +101,13 @@ export interface AccumulatingDeltasLine extends ProfileLineBase {
   kind: ProfileLineKind.ACCUMULATING_DELTAS;
 }
 
+export interface IncompletePredicateLine extends TimestampedLine {
+  kind: ProfileLineKind.INCOMPLETE_PREDICATE;
+  predicate: string;
+}
+
 export type ProfileLine = EndOfFileLine | StartPredicateEvaluationLine | StartRecursivePredicateEvaluationLine | StartHopEvaluationLine | InferredEmptyRelationLine | TupleCountsLine | RAInstructionLine | WroteRelationLine | HopRelationLine |
-  DeltaRowCountLine | EmptyDeltaLine | AccumulatingDeltasLine;
+  DeltaRowCountLine | EmptyDeltaLine | AccumulatingDeltasLine | IncompletePredicateLine;
 
 const timestampRegex = /\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] \((\d+)s\)/;
 
@@ -127,6 +133,7 @@ const deltaRowCountLineRegex = timestampedLineRegex(/\s+- ([^ ]+) has (\d+) rows
 const emptyDeltaLineRegex = timestampedLineRegex(/Empty delta for ([^ ]+) \(order for disjuncts: delta=(\d+|<standard>)\)\./);
 const accumulatingDeltasLineRegex = timestampedLineRegex(/Accumulating deltas/);
 const inferredEmptyRelationLineRegex = timestampedLineRegex(/Inferred that non-rec relation ([^/ ]+)\/(\d+) is empty$/);
+const incompletePredicateLineRegex = timestampedLineRegex(/Predicate ([^ ]+) was not sufficiently evaluated, re-evaluating it and retrying\.$/)
 
 export class LineBuffer {
   private nextLine: ProfileLine | undefined = undefined;
@@ -254,8 +261,16 @@ export class LineBuffer {
         }
         else if (match = line.match(accumulatingDeltasLineRegex)) {
           this.nextLine = {
-            kind:ProfileLineKind.ACCUMULATING_DELTAS,
+            kind: ProfileLineKind.ACCUMULATING_DELTAS,
             lineNumber: this.lineNumber
+          };
+        }
+        else if (match = line.match(incompletePredicateLineRegex)) {
+          this.nextLine = {
+            kind: ProfileLineKind.INCOMPLETE_PREDICATE,
+            lineNumber: this.lineNumber,
+            elapsedSeconds: parseInt(match[1]),
+            predicate: match[2]
           };
         }
       }

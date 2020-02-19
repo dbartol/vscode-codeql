@@ -4,6 +4,7 @@ import { Readable } from "stream";
 
 export enum ProfileLineKind {
   END_OF_FILE = 'end_of_file',
+  START_QUERY_EXECUTION = 'start_query_execution',
   START_HOP_EVALUATION = 'start_hop_evaluation',
   START_PREDICATE_EVALUATION = 'start_predicate_evaluation',
   START_RECURSIVE_PREDICATE_EVALUATION = 'start_recursive_predicate_evaluation',
@@ -15,7 +16,8 @@ export enum ProfileLineKind {
   DELTA_ROW_COUNT = 'delta_row_count',
   EMPTY_DELTA = 'empty_delta',
   ACCUMULATING_DELTAS = 'accumulating_deltas',
-  INCOMPLETE_PREDICATE = 'incomplete_predicate'
+  INCOMPLETE_PREDICATE = 'incomplete_predicate',
+  CSV_IMB_QUERIES = 'csv_imb_queries'
 }
 
 export interface ProfileLineBase {
@@ -28,6 +30,10 @@ export interface TimestampedLine extends ProfileLineBase {
 
 export interface EndOfFileLine extends ProfileLineBase {
   kind: ProfileLineKind.END_OF_FILE;
+}
+
+export interface StartQueryExecutionLine extends TimestampedLine {
+  kind: ProfileLineKind.START_QUERY_EXECUTION;
 }
 
 export interface StartHopEvaluationLine extends TimestampedLine {
@@ -106,8 +112,20 @@ export interface IncompletePredicateLine extends TimestampedLine {
   predicate: string;
 }
 
+export interface CsvImbQueriesLine extends ProfileLineBase {
+  kind: ProfileLineKind.CSV_IMB_QUERIES;
+  stageKind: string;
+  predicates: string[];
+  query: string;
+  stage: number;
+  status: string;
+  time: number;
+  results: number;
+  cumulativeTime: number;
+}
+
 export type ProfileLine = EndOfFileLine | StartPredicateEvaluationLine | StartRecursivePredicateEvaluationLine | StartHopEvaluationLine | InferredEmptyRelationLine | TupleCountsLine | RAInstructionLine | WroteRelationLine | HopRelationLine |
-  DeltaRowCountLine | EmptyDeltaLine | AccumulatingDeltasLine | IncompletePredicateLine;
+  DeltaRowCountLine | EmptyDeltaLine | AccumulatingDeltasLine | IncompletePredicateLine | StartQueryExecutionLine | CsvImbQueriesLine;
 
 const timestampRegex = /\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] \((\d+)s\)/;
 
@@ -115,6 +133,7 @@ function timestampedLineRegex(_pattern: RegExp): RegExp {
   return new RegExp(`^(?:${timestampRegex.source}) (?:${_pattern.source})`);
 }
 
+const startQueryExecutionLineRegex = timestampedLineRegex(/Start query execution$/);
 const startEvaluatingPredicateLineRegex = timestampedLineRegex(
   /Starting to evaluate predicate ([^/]+)\/(\d+)@([A-Fa-f0-9]+)$/
 );
@@ -124,6 +143,7 @@ const startEvaluatingRecursivePredicateLineRegex = timestampedLineRegex(
 const startEvaluatingHopLineRegex = timestampedLineRegex(
   /Starting to evaluate predicate ([^/]+)\/(\d+)\[(\d+)\]@([A-Fa-f0-9]+) = HOP (.+)$/
 );
+const csvImbQueriesLineRegex = /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] CSV_IMB_QUERIES: (Query|Stage),([^,]+),([^,]+),(\d+),([^,]+),(\d+(?:\.\d+)?),(\d+),(\d+)$/;
 const tupleCountsLineRegex = timestampedLineRegex(/Tuple counts for (.*)+:/);
 const nonReturnLineRegex = /^ +(\d+) +~(\d+)% +(.*)$/;
 const returnLineRegex = /^ +(return .*)$/;
@@ -158,7 +178,14 @@ export class LineBuffer {
         const line = <string>lineResult.value;
 
         let match: RegExpMatchArray | null;
-        if (match = line.match(startEvaluatingRecursivePredicateLineRegex)) {
+        if (match = line.match(startQueryExecutionLineRegex)) {
+          this.nextLine = {
+            kind: ProfileLineKind.START_QUERY_EXECUTION,
+            lineNumber: this.lineNumber,
+            elapsedSeconds: parseInt(match[1])
+          };
+        }
+        else if (match = line.match(startEvaluatingRecursivePredicateLineRegex)) {
           this.nextLine = {
             kind: ProfileLineKind.START_RECURSIVE_PREDICATE_EVALUATION,
             lineNumber: this.lineNumber,
@@ -272,6 +299,20 @@ export class LineBuffer {
             elapsedSeconds: parseInt(match[1]),
             predicate: match[2]
           };
+        }
+        else if (match = line.match(csvImbQueriesLineRegex)) {
+          this.nextLine = {
+            kind: ProfileLineKind.CSV_IMB_QUERIES,
+            lineNumber: this.lineNumber,
+            stageKind: match[1],
+            predicates: match[2].split(' '),
+            query: match[3],
+            stage: parseInt(match[4]),
+            status: match[5],
+            time: parseFloat(match[6]),
+            results: parseInt(match[7]),
+            cumulativeTime: parseInt(match[8])
+          }
         }
       }
     }

@@ -1,6 +1,6 @@
 import { Readable } from 'stream';
 import { reportError } from './diagnostics';
-import { LineBuffer, ProfileLineKind, WroteRelationLine, StartPredicateEvaluationLine, TupleCountsLine, StartRecursivePredicateEvaluationLine, StartHopEvaluationLine, HopRelationLine, InferredEmptyRelationLine } from './line-buffer';
+import { LineBuffer, ProfileLineKind, WroteRelationLine, StartPredicateEvaluationLine, TupleCountsLine, StartRecursivePredicateEvaluationLine, StartHopEvaluationLine, HopRelationLine, InferredEmptyRelationLine, CsvImbQueriesLine } from './line-buffer';
 
 export interface RAInstruction {
   operation: string;
@@ -81,6 +81,19 @@ export interface AccumulatingDeltasEvent {
 
 export type ProfileEvent = PredicateEvaluationEvent | SccEvaluationEvent | DatabaseTableEvaluationEvent | AccumulatingDeltasEvent;
 
+export interface EvaluationStage {
+  stage: number;
+  stageKind: string;
+  results: number;
+  time: number;
+  cumulativeTime: number;
+  events: ProfileEvent[];
+}
+
+export interface EvaluationProfile {
+  stages: EvaluationStage[];
+}
+
 interface RecursivePredicateEvaluation {
   lineNumber: number;
   startTime: number;
@@ -101,14 +114,57 @@ export class Parser {
     this.lineBuffer = new LineBuffer(inputStream);
   }
 
-  public async parseEvent(): Promise<ProfileEvent | undefined> {
+  public async parseEvaluation(): Promise<EvaluationProfile> {
+    await this.lineBuffer.expect(ProfileLineKind.START_QUERY_EXECUTION);
+
+    const stages: EvaluationStage[] = [];
+    while (true) {
+      const nextLine = await this.lineBuffer.peek();
+      switch (nextLine.kind) {
+        case ProfileLineKind.END_OF_FILE:
+          return {
+            stages: stages
+          };
+
+        case ProfileLineKind.START_PREDICATE_EVALUATION:
+        case ProfileLineKind.START_HOP_EVALUATION:
+        case ProfileLineKind.START_RECURSIVE_PREDICATE_EVALUATION:
+        case ProfileLineKind.WROTE_RELATION:
+        case ProfileLineKind.ACCUMULATING_DELTAS:
+          stages.push(await this.parseStage());
+          break;
+
+        default:
+          reportError(nextLine.lineNumber, `Unexpected line: '${nextLine.kind}'.`);
+      }
+    }
+  }
+
+  private async parseStage(): Promise<EvaluationStage> {
+    const events: ProfileEvent[] = [];
+    while (true) {
+      const event = await this.parseEvent();
+      if (event === undefined) {
+        const csvQueriesLine = <CsvImbQueriesLine>await this.lineBuffer.expect(ProfileLineKind.CSV_IMB_QUERIES);
+        return {
+          stage: csvQueriesLine.stage,
+          stageKind: csvQueriesLine.stageKind,
+          results: csvQueriesLine.results,
+          time: csvQueriesLine.time,
+          cumulativeTime: csvQueriesLine.cumulativeTime,
+          events: events
+        };
+      }
+      else {
+        events.push(event);
+      }
+    }
+  }
+
+  private async parseEvent(): Promise<ProfileEvent | undefined> {
     while (true) {
       const firstLine = await this.lineBuffer.peek();
       switch (firstLine.kind) {
-        case ProfileLineKind.END_OF_FILE:
-          await this.lineBuffer.read();
-          return undefined;
-
         case ProfileLineKind.START_PREDICATE_EVALUATION: {
           const evaluation = await this.parsePredicateEvaluation();
           if (evaluation !== undefined) {
@@ -133,8 +189,7 @@ export class Parser {
           return await this.parseAccumulatingDeltas();
 
         default:
-          await this.lineBuffer.read();
-          reportError(firstLine.lineNumber, `Unexpected line: '${firstLine.kind}'.`);
+          return undefined;
       }
     }
   }

@@ -9,7 +9,8 @@
       "program": "${workspaceFolder}/tools/scrape-logs/out/index.js",
       "args": [
         "profile",
-        "--log", "${relativeFile}"
+        "--log", "C:\\Src\\Snapshots\\Perf\\wireshark_wireshark_41ebec3\\runlog\\execute-queries-ql_1-full.log",
+        "--output", "C:\\Src\\Snapshots\\Perf\\wireshark_wireshark_41ebec3\\runlog\\execute-queries-ql_1-full.yaml"
       ],
       "skipFiles": [
         "<node_internals>/**"

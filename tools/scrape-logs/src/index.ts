@@ -13,6 +13,11 @@ async function main(): Promise<void> {
       type: 'string',
       demandOption: true
     })
+    .option('output', {
+      description: 'Path to output file',
+      type: 'string',
+      demandOption: true
+    })
     .help()
     .alias('help', 'h')
     .argv;
@@ -107,7 +112,8 @@ async function main(): Promise<void> {
   const text = yaml.safeDump(report, {
     noRefs: true
   });
-  console.log(text)
+
+  await fs.writeFile(argv.output, text);
 }
 
 (async () => { main(); })();

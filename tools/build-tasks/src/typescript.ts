@@ -37,7 +37,8 @@ export function compileTypeScript() {
   //REVIEW: Better way to detect deployable projects?
   // Since extension .js files are deployed to 'dist/<package>/out', and libraries are deployed to
   // 'dist/<app package>/node_modules/<package>/out'.
-  const pathToRoot = (path.dirname(project.projectRelativeFolder) === 'extensions') ?
+  const groupName = path.dirname(project.projectRelativeFolder);
+  const pathToRoot = ((groupName === 'extensions') || (groupName === 'tools')) ?
     '../../..' : '../../../../..';
 
   return tsProject.src()

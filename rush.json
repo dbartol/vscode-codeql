@@ -34,6 +34,10 @@
       "projectFolder": "tools/build-tasks"
     },
     {
+      "packageName": "scrape-logs",
+      "projectFolder": "tools/scrape-logs"
+    },
+    {
       "packageName": "semmle-bqrs",
       "projectFolder": "lib/semmle-bqrs"
     },

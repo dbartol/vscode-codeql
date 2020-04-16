@@ -79,6 +79,16 @@
         "configuration": "./language-configuration.json"
       },
       {
+        "id": "qlra",
+        "aliases": [
+          "QLRA",
+          "qlra"
+        ],
+        "extensions": [
+          ".qlra"
+        ]
+      },
+      {
         "id": "xml",
         "aliases": [
           "qhelp"
@@ -98,6 +108,11 @@
         "language": "dbscheme",
         "scopeName": "source.dbscheme",
         "path": "./out/syntaxes/dbscheme.tmLanguage.json"
+      },
+      {
+        "language": "qlra",
+        "scopeName": "source.qlra",
+        "path": "./out/syntaxes/qlra.tmLanguage.json"
       }
     ],
     "configuration": {

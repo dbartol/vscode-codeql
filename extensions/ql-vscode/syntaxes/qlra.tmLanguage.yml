@@ -66,12 +66,27 @@ macros:
   keyword: '\b(?#)(?#end-of-id)'
 
 patterns:
-  - include: '#stage'
+  - include: '#comment'
+  - include: '#literal'
+  - include: '#constant-clause'
+  - include: '#evaluation-keyword'
+  - include: '#type-keyword'
+  - include: '#operation-keyword'
+  - include: '#relation-annotation-keyword'
+  - include: '#operator-or-punctuation'
+  - include: '#register'
+  - include: '#temp-variable'
+  - include: '#relation-with-parameters'
+  - include: '#relation-id'
 
 repository:
   # A character that can appear somewhere in an identifier.
   id-letter:
-    match: '[@0-9A-Za-z_]'
+    match: '[0-9A-Za-z_]'
+
+  # A character that can appear somewhere in a relation ID (include the `::` and `#` separators)
+  relation-id-letter:
+    match: '(?#id-letter)|[:\#@]'
 
   # Matches a position containing a non-identifier character. Used to ensure we do not match partial
   # identifiers/keywords in other rules.
@@ -79,14 +94,28 @@ repository:
     match: '(?!(?#id-letter))'
 
   simple-id:
-    match: '[@A-Za-z][0-9A-Za-z_]* (?#end-of-id)'
+    match: '@?(?#simple-id-no-at)'
+  
+  simple-id-no-at:
+    match: '[A-Za-z](?#id-letter)* (?#end-of-id)'
 
-  project-prefix:
-    match: 'project(?=\#)'
+  parameter-id:
+    match: '[A-Za-z](?:(?#id-letter)|\#)* (?#end-of-id)'
+
+  decoration-prefix:
+    match: '(branch|dom|num|project)(?=\#)'
     name: storage.modifier.project.qlra
 
+  staged-ext-suffix:
+    match: '(@)(staged_ext)'
+    captures:
+      '1':
+        name: punctuation.separator.at.qlra
+      '2':
+        name: storage.modifier.staged-ext.qlra
+
   decoration-suffix:
-    match: '(\#)((?#simple-id))'
+    match: '(?:(\#))((?#simple-id-no-at))'
     captures:
       '1':
         name: punctuation.separator.hash.qlra
@@ -95,64 +124,69 @@ repository:
 
   relation-id:
     begin: '(?=(?#simple-id))'
-    end: '(?!(?#id-letter)|[\#:])'
+    end: '(?!(?#relation-id-letter))'
     name: meta.block.relation-id.qlra
     patterns:
+    - include: '#decoration-prefix'
+    - include: '#hash'
+    - include: '#relation-id-without-prefix'
+
+  relation-id-without-prefix:
+    begin: '(?=(?#simple-id))'
+    end: '(?!(?#relation-id-letter))'
+    name: meta.block.relation-id.qlra
+    patterns:
+    - include: '#staged-ext-suffix'
     - match: '(?#simple-id)'
       name: entity.name.function.qlra
     - include: '#coloncolon'
     - include: '#decoration-suffix'
+    - include: '#hash'
 
   register:
     match: '\b r[0-9]+ (?#end-of-id)'
-    name: entity.name.variable.local.qlra
+    name: entity.name.variable.local.register.qlra
 
-  # An integer literal.
+  temp-variable:
+    match: '(?:[A-Z]|agg) (?#end-of-id)'
+    name: entity.name.variable.local.temp.qlra
+
+  comment:
+    begin: '\[\[\['
+    beginCaptures:
+      '0':
+        name: punctuation.definition.comment.qlra
+    end: ']]]|$'
+    endCaptures:
+      '0':
+        name: punctuation.definition.comment.qlra
+    name: comment.block.qlra
+
+  # Literals
   integer-literal:
     match: '[0-9]+(?![0-9])'
     name: constant.numeric.decimal.qlra
 
-# Operators and punctuation
-  hash:
-    match: '\#'
-    name: punctuation.separator.hash.qlra
+  string-literal:
+    begin: '"'
+    beginCaptures:
+      '0':
+        name: punctuation.definition.string.begin.qlra
+    end: '"|$' # Guard against unterminated strings
+    endCaptures:
+      '0':
+        name: punctuation.definition.string.end.qlra
+    name: string.quoted.double.qlra
+    patterns:
+      - match: '\\.'
+        name: constant.character.escape.qlra
 
-  open-paren:
-    match: '\('
-    name: punctuation.parenthesis.open.qlra
+  literal:
+    patterns:
+    - include: '#integer-literal'
+    - include: '#string-literal'
 
-  close-paren:
-    match: '\)'
-    name: punctuation.parenthesis.close.qlra
-
-  dot:
-    match: '\.'
-    name: punctuation.separator.dot.qlra
-
-  semicolon:
-    match: ';'
-    name: punctuation.separator.statement.qlra
-  
-  colon:
-    match: ':'
-    name: punctuation.separator.colon.qlra
-  
-  coloncolon:
-    match: ':'
-    name: punctuation.separator.coloncolon.qlra
-  
-  comma:
-    match: ','
-    name: punctuation.separator.comma.qlra
-  
-  equals:
-    match: '='
-    name: punctuation.separator.equals.qlra
-
-  define:
-    match: ':-'
-    name: punctuation.separator.define.qlra
-
+  # Operators and punctuation
   open-brace:
     match: '\{'
     name: punctuation.curlybrace.open.ql
@@ -169,56 +203,120 @@ repository:
     match: '\]'
     name: punctuation.squarebracket.close.qlra
 
-  union:
-    match: '\\/'
-    name: punctuation.operator.union.qlra
+  open-paren:
+    match: '\('
+    name: punctuation.parenthesis.open.qlra
 
+  close-paren:
+    match: '\)'
+    name: punctuation.parenthesis.close.qlra
+
+  arithmetic-operator:
+    match: '\+ | - | \* | / | %'
+    name: keyword.operator.arithmetic.qlra
+
+  colon:
+    match: ':'
+    name: punctuation.separator.colon.qlra
+  
+  coloncolon:
+    match: '::'
+    name: punctuation.separator.coloncolon.qlra
+  
+  comma:
+    match: ','
+    name: punctuation.separator.comma.qlra
+  
+  concatenation:
+    match: '\+\+'
+    name: keyword.operator.arithmetic.qlra
+
+  define:
+    match: ':-'
+    name: punctuation.separator.define.qlra
+
+  dot:
+    match: '\.'
+    name: punctuation.separator.dot.qlra
+
+  equals:
+    match: '='
+    name: punctuation.separator.equals.qlra
+
+  hash:
+    match: '\#'
+    name: punctuation.separator.hash.qlra
+
+  relational-operator:
+    match: '<= | < | >= | >'
+    name: keyword.operator.relational.qlra
+
+  semicolon:
+    match: ';'
+    name: punctuation.separator.statement.qlra
+  
   stage-end:
     match: '========'
     name: punctuation.separator.stage-end.qlra
 
+  union:
+    match: '\\/'
+    name: punctuation.operator.union.qlra
+
   operator-or-punctuation:
     patterns:
-    - include: '#open-paren'
-    - include: '#close-paren'
-    - include: '#semicolon'
-    - include: '#colon'
-    - include: '#comma'
-    - include: '#equals'
-    - include: '#dot'
+    - include: '#coloncolon' # Must precede colon
+    - include: '#concatenation' # Must precede arithmetic-operator
+    - include: '#define' # Must precede colon
+    - include: '#stage-end' # Must precede equals
     - include: '#open-brace'
     - include: '#close-brace'
     - include: '#open-bracket'
     - include: '#close-bracket'
+    - include: '#open-paren'
+    - include: '#close-paren'
+    - include: '#arithmetic-operator'
+    - include: '#colon'
+    - include: '#comma'
+    - include: '#dot'
+    - include: '#equals'
+    - include: '#hash'
+    - include: '#relational-operator'
+    - include: '#semicolon'
     - include: '#union'
-    - include: '#stage-end'
 
 # Relation annotation keywords
   cached:
     match:
       keyword: 'CACHED'
-    name: storage.modifier.cached.ql
+    name: storage.modifier.cached.qlra
   
+  computed:
+    match:
+      keyword: 'COMPUTED'
+    name: storage.modifier.computed.qlra
+
   synthetic:
     match:
       keyword: 'SYNTHETIC'
-    name: storage.modifier.synthetic.ql
+    name: storage.modifier.synthetic.qlra
 
   relation-annotation-keyword:
     patterns:
     - include: '#cached'
+    - include: '#computed'
     - include: '#synthetic'
 
 # Type annotation keywords
   extensional:
     match:
       keyword: 'extensional'
-    name: storage.modifier.extensional.ql
+    name: storage.modifier.extensional.qlra
 
   unique:
     match:
       keyword: 'unique'
-    name: storage.modifier.unique.ql
+    name: storage.modifier.unique.qlra
 
   type-annotation-keyword:
     patterns:
@@ -265,6 +363,70 @@ repository:
     - include: '#numbered-tuple'
     - include: '#string'
 
+# Evaluation keywords
+  evaluate:
+    match:
+      keyword: 'EVALUATE'
+    name: keyword.other.evaluate.qlra
+  
+  in:
+    match:
+      keyword: 'IN'
+    name: keyword.other.in.qlra
+  
+  layer:
+    match:
+      keyword: 'LAYER'
+    name: keyword.other.layer.qlra
+
+  load:
+    match:
+      keyword: 'LOAD'
+    name: keyword.other.load.qlra
+
+  nonrecursive:
+    match:
+      keyword: 'NONRECURSIVE'
+    name: keyword.other.nonrecursive.qlra
+  
+  rec:
+    match:
+      keyword: 'rec'
+    name: keyword.other.rec.qlra
+
+  recursive:
+    match:
+      keyword: 'RECURSIVE'
+    name: keyword.other.recursive.qlra
+  
+  relation:
+    match:
+      keyword: 'RELATION'
+    name: keyword.other.relation.qlra
+
+  relations:
+    match:
+      keyword: 'RELATIONS'
+    name: keyword.other.relations.qlra
+
+  results:
+    match:
+      keyword: 'RESULTS'
+    name: keyword.other.results.qlra
+
+  evaluation-keyword:
+    patterns:
+    - include: '#evaluate'
+    - include: '#in'
+    - include: '#layer'
+    - include: '#load'
+    - include: '#nonrecursive'
+    - include: '#rec'
+    - include: '#recursive'
+    - include: '#relation'
+    - include: '#relations'
+    - include: '#results'
+
 # Operation keywords
   aggregate:
     match:
@@ -281,6 +443,11 @@ repository:
       keyword: 'AS'
     name: keyword.other.as.qlra
 
+  asc:
+    match:
+      keyword: 'ASC'
+    name: keyword.other.asc.qlra
+
   cartesian:
     match:
       keyword: 'CARTESIAN'
@@ -291,6 +458,11 @@ repository:
       keyword: 'CONSTANT'
     name: keyword.other.constant.qlra
 
+  count:
+    match:
+      keyword: 'COUNT'
+    name: keyword.other.count.qlra
+  
   dedup:
     match:
       keyword: 'DEDUP'
@@ -306,6 +478,21 @@ repository:
       keyword: 'JOIN'
     name: keyword.other.join.qlra
 
+  matches-constant:
+    match:
+      keyword: 'matches_constant'
+    name: keyword.other.matches-constant.qlra
+
+  max:
+    match:
+      keyword: 'MAX'
+    name: keyword.other.max.qlra
+
+  min:
+    match:
+      keyword: 'MIN'
+    name: keyword.other.min.qlra
+  
   not:
     match:
       keyword: 'NOT'
@@ -321,20 +508,45 @@ repository:
       keyword: 'OUTPUT'
     name: keyword.other.output.qlra
 
+  primitive:
+    match:
+      keyword: 'PRIMITIVE'
+    name: keyword.other.primitive.qlra
+
   product:
     match:
       keyword: 'PRODUCT'
     name: keyword.other.product.qlra
+
+  rank:
+    match:
+      keyword: 'RANK'
+    name: keyword.other.rank.qlra
+
+  return:
+    match:
+      keyword: 'return'
+    name: keyword.control.flow.return.qlra
 
   scan:
     match:
       keyword: 'SCAN'
     name: keyword.other.scan.qlra
 
+  select:
+    match:
+      keyword: 'SELECT'
+    name: keyword.other.select.qlra
+
   stream:
     match:
       keyword: 'STREAM'
     name: keyword.other.stream.qlra
+
+  sum:
+    match:
+      keyword: 'SUM'
+    name: keyword.other.sum.qlra
 
   with:
     match:
@@ -346,87 +558,33 @@ repository:
     - include: '#aggregate'
     - include: '#and'
     - include: '#as'
+    - include: '#asc'
     - include: '#cartesian'
     - include: '#constant'
+    - include: '#count'
     - include: '#dedup'
     - include: '#first'
     - include: '#join'
+    - include: '#matches-constant'
+    - include: '#max'
+    - include: '#min'
     - include: '#not'
     - include: '#on'
     - include: '#output'
+    - include: '#primitive'
     - include: '#product'
+    - include: '#rank'
+    - include: '#return'
     - include: '#scan'
+    - include: '#select'
     - include: '#stream'
+    - include: '#sum'
     - include: '#with'
 
-# Predicate kinds
-  load-relation:
-    match:
-      keyword: '^LOAD\sRELATION'
-    name: keyword.other.load-relation.qlra
-  
-  evaluate-nonrecursive-relation:
-    match:
-      keyword: '^EVALUATE\sNONRECURSIVE\sRELATION'
-    name: keyword.other.evaluate-nonrecursive-relation.qlra
-
-  results-in:
-    match:
-      keyword: '^RESULTS\sIN'
-    name: keyword.other.results-in.qlra
-
-  stage:
-    begin: ''
-    endPattern: '#stage-end'
-    name: meta.block.stage.qlra
-    patterns:
-    - include: '#relation-evaluation'
-
-# Relation evaluations
-  relation-evaluation:
-    patterns:
-    - include: '#evaluate-nonrecursive-relation-evaluation'
-    - include: '#load-relation-evaluation'
-    - include: '#results-in-evaluation'
-
-  results-in-evaluation:
-    beginPattern: '#results-in'
-    end: '(?=(?#stage-end))'
-    name: meta.block.result-in-evaluation.qlra
-    patterns:
-    - include: '#colon'
-    - include: '#relation-id'
-
-  evaluate-nonrecursive-relation-evaluation:
-    beginPattern: '#evaluate-nonrecursive-relation'
-    end: '^(?!\s)' # Ends at first non-indented line
-    name: meta.block.evaluate-nonrecursive-predicate-evaluation.qlra
-    patterns:
-    - include: '#colon'
-    - include: '#relation-head'
-    - include: '#statement'
-
-  load-relation-evaluation:
-    beginPattern: '#load-relation'
-    end: '$'
-    name: meta.block.load-relation-evaluation.qlra
-    patterns:
-    - include: '#colon'
-    - include: '#database-relation'
-
-  relation-head:
-    begin: '^\s\s(?=(?#relation-annotation-keyword)|(?#simple-id))'
-    end: '$'
-    name: meta.block.relation-head.qlra
-    patterns:
-    - include: '#relation-annotation-keyword'
-    - include: '#database-relation'
-    - include: '#define'
-
-  database-relation:
-    begin: '(?=(?#id-letter))'
+  relation-with-parameters:
+    begin: '(?=(?#relation-id-letter)+\()'
     end: '(?<=\))'
-    name: meta.block.database-relation.qlra
+    name: meta.block.relation-with-parameters.qlra
     patterns:
     - include: '#relation-id'
     - include: '#parameter-list'
@@ -437,61 +595,15 @@ repository:
     name: meta.block.parameter-list.qlra
     patterns:
       # A simple-id followed by a `,` or a `)` is a parameter name.
-    - match: '(?#simple-id)(?=\s*(?:,|\)))'
+    - match: '(?#parameter-id)(?=\s*(?:,|\)))'
       name: variable.parameter.qlra
     - include: '#type-keyword'
     - include: '#type-annotation-keyword'
     - include: '#comma'
 
-  compute-statement:
-    begin: '^\s\s\s\s(?=\{)'
-    end: '$'
-    name: meta.block.compute-statement.qlra
+  constant-clause:
+    beginPattern: '#constant'
+    end: '(?<=\))'
+    name: meta.block.constant-clause.qlra
     patterns:
-    - include: '#as-clause'
-    - include: '#output-clause'
-    - include: '#register'
-    - include: '#operation-keyword'
-    - include: '#relation-id'
-    - include: '#integer-literal'
-    - include: '#open-brace'
-    - include: '#close-brace'
-    - include: '#equals'
-    - include: '#union'
-
-  return-statement:
-    begin: '^\s\s\s\s(?=(?#return))'
-    end: '$'
-    name: meta.block.return-statement.qlra
-    patterns:
-    - include: '#return'
-    - include: '#register'
-
-  return:
-    match:
-      keyword: 'return'
-    name: keyword.control.flow.return.qlra
-
-  statement:
-    patterns:
-    - include: '#compute-statement'
-    - include: '#return-statement'
-
-  temp-variable:
-    match: '(?#simple-id)'
-    name: entity.name.variable.local.qlra
-
-  as-clause:
-    beginPattern: '#as'
-    endPattern: '#temp-variable'
-    name: meta.block.as-clause.qlra
-  
-  output-clause:
-    beginPattern: '#output'
-    end: '$'
-    name: meta.block.output-clause.qlra
-    patterns:
-    - include: '#integer-literal'
-    - include: '#register'
-    - include: '#temp-variable'
-    - include: '#dot'
+    - include: '#parameter-list'

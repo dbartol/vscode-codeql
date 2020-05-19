@@ -68,91 +68,28 @@ macros:
 patterns:
   - include: '#comment'
   - include: '#literal'
-  - include: '#constant-clause'
-  - include: '#materialize-clause'
-  - include: '#type-keyword'
-  - include: '#operation-keyword'
-  - include: '#relation-annotation-keyword'
-  - include: '#operator-or-punctuation'
-  - include: '#register'
-  - include: '#temp-variable'
-  - include: '#relation-with-parameters'
-  - include: '#relation-id'
+  - include: '#instruction-lhs'
+  - include: '#instruction-rhs'
 
 repository:
-  # A character that can appear somewhere in an identifier.
-  id-letter:
-    match: '[0-9A-Za-z_]'
+  # A character that can start an identifier
+  id-start-char:
+    match: '[A-Za-z$_\#@]'
 
-  # A character that can appear somewhere in a relation ID (include the `::` and `#` separators)
-  relation-id-letter:
-    match: '(?#id-letter)|[:\#@]'
+  # A character that can appear in the middle of an identifier
+  id-middle-char:
+    match: '[A-Za-z0-9$_\#@:.]'
 
-  # Matches a position containing a non-identifier character. Used to ensure we do not match partial
-  # identifiers/keywords in other rules.
-  end-of-id:
-    match: '(?!(?#id-letter))'
+  # A character that can appear at the end of an identifier
+  id-end-char:
+    match: '[A-Za-z0-9$_\#@]'
 
-  simple-id:
-    match: '@?(?#simple-id-no-at)'
-  
-  select-id:
-    match: '\#select(?#end-of-id)'
+  # An identifier
+  id:
+    match: '(?#id-start-char)(?:(?#id-middle-char)*(?#id-end-char))'
 
-  simple-id-no-at:
-    match: '[A-Za-z](?#id-letter)* (?#end-of-id)'
-
-  parameter-id:
-    match: '[A-Za-z](?:(?#id-letter)|\#)* (?#end-of-id)'
-
-  decoration-prefix:
-    match: '(branch|dom|num|project)(?=\#)'
-    name: storage.modifier.project.qlra
-
-  staged-ext-suffix:
-    match: '(@)(staged_ext)'
-    captures:
-      '1':
-        name: punctuation.separator.at.qlra
-      '2':
-        name: storage.modifier.staged-ext.qlra
-
-  decoration-suffix:
-    match: '(?:(\#))((?#simple-id-no-at))'
-    captures:
-      '1':
-        name: punctuation.separator.hash.qlra
-      '2':
-        name: storage.modifier.decorator.qlra
-
-  relation-id:
-    begin: '(?=(?#simple-id)|(?#select-id))'
-    end: '(?!(?#relation-id-letter))'
-    name: meta.block.relation-id.qlra
-    patterns:
-    - include: '#decoration-prefix'
-    - include: '#relation-id-without-prefix'
-    - include: '#hash'
-
-  relation-id-without-prefix:
-    begin: '(?=(?#simple-id)|(?#select-id))'
-    end: '(?!(?#relation-id-letter))'
-    name: meta.block.relation-id.qlra
-    patterns:
-    - include: '#staged-ext-suffix'
-    - match: '(?#simple-id)|(?#select-id)'
-      name: entity.name.function.qlra
-    - include: '#coloncolon'
-    - include: '#decoration-suffix'
-    - include: '#hash'
-
-  register:
-    match: '\b r[0-9]+ (?#end-of-id)'
-    name: entity.name.variable.local.register.qlra
-
-  temp-variable:
-    match: '(?:[A-Z]|agg) (?#end-of-id)'
-    name: entity.name.variable.local.temp.qlra
+  natural-number:
+    match: '[0-9]+'
 
   bracket-comment:
     begin: '\[\[\['
@@ -176,14 +113,23 @@ repository:
         name: punctuation.definition.comment.qlra
     name: comment.block.qlra
 
+  line-comment:
+    begin: '//'
+    beginCaptures:
+      '0':
+        name: punctuation.definition.comment.qlra
+    end: '$'
+    name: comment.line.double-slash.qlra
+
   comment:
     patterns:
     - include: '#bracket-comment'
     - include: '#slash-star-comment'
+    - include: '#line-comment'
 
   # Literals
   integer-literal:
-    match: '[0-9]+(?![0-9])'
+    match: '(?:\+ | -)?(?#natural-number)'
     name: constant.numeric.decimal.qlra
 
   string-literal:
@@ -632,45 +578,77 @@ repository:
     - include: '#sum'
     - include: '#with'
 
-  relation-with-parameters:
-    begin: '^\s*(?=(?#relation-id-letter)+\()' # Only match at start of line
-    end: '(?<=\))'
-    name: meta.block.relation-with-parameters.qlra
-    patterns:
-    - include: '#relation-id'
-    - include: '#parameter-list'
+  local-variable:
+    match: '(?#id)'
+    name: entity.name.variable.local.qlra
 
-  parameter-list:
-    beginPattern: '#open-paren'
-    endPattern: '#close-paren'
-    name: meta.block.parameter-list.qlra
+  end-of-instruction:
+    match: '(?=\{ | return\b)'
+
+  instruction-lhs:
+    begin: '(?=\{)'
+    end: '(?==)'
+    name: meta.block.instruction-lhs.qlra
     patterns:
-      # A parameter-id followed by a `,` or a `)` is a parameter name.
-    - match: '(?#parameter-id)(?=\s*(?:,|\)))'
-      name: variable.parameter.qlra
-    - include: '#type-keyword'
-    - include: '#type-annotation-keyword'
+    - include: '#natural-number'
+    - include: '#open-brace'
+    - include: '#close-brace'
+    - include: '#local-variable'
+
+  braced-tuple-op:
+    beginPattern: '#open-brace'
+    endPattern: '#close-brace'
+    name: meta.block.braced-tuple-op.qlra
+
+  non-braced-tuple-op:
+    begin: '(?!\s | \{)'
+    end: '(?#end-of-instruction)'
+    patterns:
     - include: '#comma'
+    - include: '#expr'
 
-  constant-clause:
-    beginPattern: '#constant'
-    end: '(?<=\))'
-    name: meta.block.constant-clause.qlra
+  tuple-op:
     patterns:
-    - include: '#parameter-list'
+    - include: '#braced-tuple-op'
+    - include: '#non-braced-tuple-op'
 
-  materialize-as-clause:
+  operand-as-clause:
     beginPattern: '#as'
-    end: '$'
-    name: meta.block.materialize-as-clause.qlra
-    patterns:
-    - match: '(?#id-letter)+'
-      name: string.unquoted.materialize-reason.qlra
+    endPattern: '#local-variable'
+    name: meta.block.operand-as-clause.qlra
 
-  materialize-clause:
-    beginPattern: '#materialize'
-    end: '$'
-    name: meta.block.materialize-clause.qlra
+  operand:
+    beginPattern: '#id'
+    end: '(?!(?#as))'
+    name: meta.block.operand.qlra
     patterns:
-    - include: '#register'
-    - include: '#materialize-as-clause'
+    - include: '#operand-as-clause'
+
+  scan-output-clause:
+    beginPattern: '#output'
+    end: '(?#end-of-instruction) | (?<})'
+    name: meta.block.scan-output-clause.qlra
+    patterns:
+    - include: '#fields'
+    - include: '#tuple-op'
+
+  scan-instruction:
+    beginPattern: '#scan'
+    end: '(?#end-of-instruction)'
+    patterns:
+    - include: '#operand'
+    - include: '#scan-output-clause'
+  
+  union-instruction:
+    beginPattern: '#operand'
+    endPattern: '#operand'
+    patterns:
+    - include: '#union'
+
+  instruction-rhs:
+    beginPattern: '#equals'
+    end: '(?#end-of-instruction)'
+    name: meta.block.instruction-rhs.qlra
+    patterns:
+    - include: '#scan-instruction'
+    - include: '#union-instruction'

@@ -270,10 +270,42 @@ export interface CompilationTarget {
 }
 
 /**
+ * A single debug operation for QuickEval.
+ */
+export interface DebugOperation {
+  /**
+   * The index of the child expression to drill into.
+   */
+  childIndex: number;
+}
+
+/**
  * Options for quick evaluation
  */
 export interface QuickEvalOptions {
   quickEvalPos?: Position;
+  debugOperations?: DebugOperation[];
+}
+
+export type DebugNodeKind = number;
+/**
+ * The kind of an AST node for debugging. This namespace is intentionally not an enum, see "for the sake of
+ * extensibility" comment above.
+ */
+// eslint-disable-next-line @typescript-eslint/no-namespace
+export namespace DebugNodeKind {
+  export const UNKNOWN = 0;
+  export const CONJUNCTION = 1;
+  export const DISJUNCTION = 2;
+}
+
+export interface DebugNodeChild {
+  pos: Position;
+}
+
+export interface DebugNode {
+  kind: DebugNodeKind;
+  children: DebugNodeChild[];
 }
 
 /**
@@ -292,8 +324,8 @@ export interface CheckQueryResult {
    * The types of the query predicates of the query
    */
   resultPatterns: ResultPattern[];
+  debugNode?: DebugNode;
 }
-
 
 /**
  * A compilation message (either an error or a warning)

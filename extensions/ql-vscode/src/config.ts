@@ -240,3 +240,6 @@ export class CliConfigListener extends ConfigListener implements CliConfig {
  * want to enable experimental features, they can add them directly in
  * their vscode settings json file.
  */
+
+/* Advanced setting: used to enable debugging features in QuickEval. */
+export const EXPERIMENTAL_DEBUGGING = new Setting('experimentalDebugging', ROOT_SETTING);

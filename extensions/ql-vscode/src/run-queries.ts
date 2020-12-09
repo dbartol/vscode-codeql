@@ -119,6 +119,24 @@ export class QueryInfo {
     };
   }
 
+  private getCompilationTarget(): messages.CompilationTarget {
+    if (this.quickEvalPosition) {
+      const quickEval: messages.QuickEvalOptions = {
+        quickEvalPos: this.quickEvalPosition
+      };
+      if (config.EXPERIMENTAL_DEBUGGING.getValue<boolean>()) {
+        quickEval.debugOperations = [];
+      }
+      return {
+        quickEval: quickEval
+      };
+    } else {
+      return {
+        query: {}
+      };
+    }
+  }
+
   async compile(
     qs: qsClient.QueryServerClient,
     progress: helpers.ProgressCallback,
@@ -126,9 +144,7 @@ export class QueryInfo {
   ): Promise<messages.CompilationMessage[]> {
     let compiled: messages.CheckQueryResult | undefined;
     try {
-      const target = this.quickEvalPosition ? {
-        quickEval: { quickEvalPos: this.quickEvalPosition }
-      } : { query: {} };
+      const target = this.getCompilationTarget();
       const params: messages.CompileQueryParams = {
         compilationOptions: {
           computeNoLocationUrls: true,

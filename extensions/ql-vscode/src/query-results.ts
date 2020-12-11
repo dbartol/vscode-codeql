@@ -13,6 +13,7 @@ import { QueryHistoryItemOptions } from './query-history';
 export class CompletedQuery implements QueryWithResults {
   readonly time: string;
   readonly query: QueryInfo;
+  readonly compilationResult: messages.CheckQueryResult;
   readonly result: messages.EvaluationResult;
   readonly database: DatabaseInfo;
   readonly logFileLocation?: string;
@@ -39,6 +40,7 @@ export class CompletedQuery implements QueryWithResults {
     public config: QueryHistoryConfig,
   ) {
     this.query = evaluation.query;
+    this.compilationResult = evaluation.compilationResult;
     this.result = evaluation.result;
     this.database = evaluation.database;
     this.logFileLocation = evaluation.logFileLocation;

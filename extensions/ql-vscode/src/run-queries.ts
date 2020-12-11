@@ -61,6 +61,7 @@ export class QueryInfo {
     public readonly dbItem: DatabaseItem,
     public readonly queryDbscheme: string, // the dbscheme file the query expects, based on library path resolution
     public readonly quickEvalPosition?: messages.Position,
+    public readonly quickEvalDebugOperations?: messages.DebugOperation[],
     public readonly metadata?: QueryMetadata,
     public readonly templates?: messages.TemplateDefinitions,
   ) {
@@ -125,7 +126,7 @@ export class QueryInfo {
         quickEvalPos: this.quickEvalPosition
       };
       if (config.EXPERIMENTAL_DEBUGGING.getValue<boolean>()) {
-        quickEval.debugOperations = [];
+        quickEval.debugOperations = this.quickEvalDebugOperations;
       }
       return {
         quickEval: quickEval
@@ -141,8 +142,8 @@ export class QueryInfo {
     qs: qsClient.QueryServerClient,
     progress: helpers.ProgressCallback,
     token: CancellationToken,
-  ): Promise<messages.CompilationMessage[]> {
-    let compiled: messages.CheckQueryResult | undefined;
+  ): Promise<messages.CheckQueryResult> {
+    let compiled: messages.CheckQueryResult;
     try {
       const target = this.getCompilationTarget();
       const params: messages.CompileQueryParams = {
@@ -168,7 +169,12 @@ export class QueryInfo {
     } finally {
       qs.logger.log(' - - - COMPILATION DONE - - - ');
     }
-    return (compiled?.messages || []).filter(msg => msg.severity === messages.Severity.ERROR);
+
+    return {
+      ...compiled,
+      messages: (compiled?.messages || []).filter(msg => msg.severity === messages.Severity.ERROR)
+    };
+    //    return (compiled?.messages || []).filter(msg => msg.severity === messages.Severity.ERROR);
   }
 
   /**
@@ -215,6 +221,7 @@ export class QueryInfo {
 
 export interface QueryWithResults {
   readonly query: QueryInfo;
+  readonly compilationResult: messages.CheckQueryResult;
   readonly result: messages.EvaluationResult;
   readonly database: DatabaseInfo;
   readonly options: QueryHistoryItemOptions;
@@ -387,10 +394,11 @@ async function promptUserToSaveChanges(document: TextDocument): Promise<boolean>
   return false;
 }
 
-type SelectedQuery = {
+export type SelectedQuery = {
   queryPath: string;
   quickEvalPosition?: messages.Position;
   quickEvalText?: string;
+  quickEvalDebugOperations?: messages.DebugOperation[];
 };
 
 /**
@@ -468,8 +476,7 @@ export async function compileAndRunQueryAgainstDatabase(
   cliServer: cli.CodeQLCliServer,
   qs: qsClient.QueryServerClient,
   db: DatabaseItem,
-  quickEval: boolean,
-  selectedQueryUri: Uri | undefined,
+  selectedQuery: SelectedQuery,
   progress: helpers.ProgressCallback,
   token: CancellationToken,
   templates?: messages.TemplateDefinitions,
@@ -478,12 +485,11 @@ export async function compileAndRunQueryAgainstDatabase(
     throw new Error(`Database ${db.databaseUri} does not have a CodeQL database scheme.`);
   }
 
-  // Determine which query to run, based on the selection and the active editor.
-  const { queryPath, quickEvalPosition, quickEvalText } = await determineSelectedQuery(selectedQueryUri, quickEval);
+  const { queryPath, quickEvalPosition, quickEvalText } = selectedQuery;
 
   const historyItemOptions: QueryHistoryItemOptions = {};
   historyItemOptions.isQuickQuery === isQuickQueryPath(queryPath);
-  if (quickEval) {
+  if (selectedQuery.quickEvalPosition != undefined) {
     historyItemOptions.queryText = quickEvalText;
   } else {
     historyItemOptions.queryText = await fs.readFile(queryPath, 'utf8');
@@ -526,21 +532,26 @@ export async function compileAndRunQueryAgainstDatabase(
     logger.log(`Couldn't resolve metadata for ${qlProgram.queryPath}: ${e}`);
   }
 
-  const query = new QueryInfo(qlProgram, db, packConfig.dbscheme, quickEvalPosition, metadata, templates);
+  const query = new QueryInfo(qlProgram, db, packConfig.dbscheme, quickEvalPosition, selectedQuery.quickEvalDebugOperations, metadata, templates);
   await checkDbschemeCompatibility(cliServer, qs, query, progress, token);
 
-  let errors;
+  let compilationResult: messages.CheckQueryResult;
   try {
-    errors = await query.compile(qs, progress, token);
+    compilationResult = await query.compile(qs, progress, token);
   } catch (e) {
     if (e instanceof ResponseError && e.code == ErrorCodes.RequestCancelled) {
-      return createSyntheticResult(query, db, historyItemOptions, 'Query cancelled', messages.QueryResultType.CANCELLATION);
+      compilationResult = {
+        fromCache: false,
+        messages: [],
+        resultPatterns: []
+      };
+      return createSyntheticResult(query, db, compilationResult, historyItemOptions, 'Query cancelled', messages.QueryResultType.CANCELLATION);
     } else {
       throw e;
     }
   }
 
-  if (errors.length == 0) {
+  if (compilationResult.messages.length == 0) {
     const result = await query.run(qs, progress, token);
     if (result.resultType !== messages.QueryResultType.SUCCESS) {
       const message = result.message || 'Failed to run query';
@@ -549,6 +560,7 @@ export async function compileAndRunQueryAgainstDatabase(
     }
     return {
       query,
+      compilationResult,
       result,
       database: {
         name: db.name,
@@ -569,28 +581,29 @@ export async function compileAndRunQueryAgainstDatabase(
 
     const formattedMessages: string[] = [];
 
-    for (const error of errors) {
+    for (const error of compilationResult.messages) {
       const message = error.message || '[no error message available]';
       const formatted = `ERROR: ${message} (${error.position.fileName}:${error.position.line}:${error.position.column}:${error.position.endLine}:${error.position.endColumn})`;
       formattedMessages.push(formatted);
       qs.logger.log(formatted);
     }
-    if (quickEval && formattedMessages.length <= 3) {
+    if ((selectedQuery.quickEvalPosition !== undefined) && formattedMessages.length <= 3) {
       helpers.showAndLogErrorMessage('Quick evaluation compilation failed: \n' + formattedMessages.join('\n'));
     } else {
-      helpers.showAndLogErrorMessage((quickEval ? 'Quick evaluation' : 'Query') +
+      helpers.showAndLogErrorMessage(((selectedQuery.quickEvalPosition !== undefined) ? 'Quick evaluation' : 'Query') +
         ' compilation failed. Please make sure there are no errors in the query, the database is up to date,' +
         ' and the query and database use the same target language. For more details on the error, go to View > Output,' +
         ' and choose CodeQL Query Server from the dropdown.');
     }
 
-    return createSyntheticResult(query, db, historyItemOptions, 'Query had compilation errors', messages.QueryResultType.OTHER_ERROR);
+    return createSyntheticResult(query, db, compilationResult, historyItemOptions, 'Query had compilation errors', messages.QueryResultType.OTHER_ERROR);
   }
 }
 
 function createSyntheticResult(
   query: QueryInfo,
   db: DatabaseItem,
+  compilationResult: messages.CheckQueryResult,
   historyItemOptions: QueryHistoryItemOptions,
   message: string,
   resultType: number
@@ -598,6 +611,7 @@ function createSyntheticResult(
 
   return {
     query,
+    compilationResult,
     result: {
       evaluationTime: 0,
       resultType: resultType,

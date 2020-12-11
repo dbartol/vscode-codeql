@@ -7,7 +7,7 @@ import { DatabaseManager, DatabaseItem } from '../databases';
 import fileRangeFromURI from './fileRangeFromURI';
 import * as messages from '../pure/messages';
 import { QueryServerClient } from '../queryserver-client';
-import { QueryWithResults, compileAndRunQueryAgainstDatabase } from '../run-queries';
+import { QueryWithResults, compileAndRunQueryAgainstDatabase, determineSelectedQuery } from '../run-queries';
 import { ProgressCallback } from '../helpers';
 import { KeyType } from './keyType';
 import { qlpackOfDatabase, resolveQueries } from './queryResolver';
@@ -63,8 +63,7 @@ export async function getLocationsForUriString(
       cli,
       qs,
       db,
-      false,
-      vscode.Uri.file(query),
+      await determineSelectedQuery(vscode.Uri.file(query), false),
       progress,
       token,
       templates

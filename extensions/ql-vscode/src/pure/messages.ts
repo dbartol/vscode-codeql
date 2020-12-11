@@ -300,12 +300,17 @@ export namespace DebugNodeKind {
 }
 
 export interface DebugNodeChild {
-  pos: Position;
+  position: Position;
 }
 
 export interface DebugNode {
   kind: DebugNodeKind;
+  position: Position;
   children: DebugNodeChild[];
+}
+
+export interface DebugStackEntry {
+  node: DebugNode;
 }
 
 /**
@@ -324,7 +329,7 @@ export interface CheckQueryResult {
    * The types of the query predicates of the query
    */
   resultPatterns: ResultPattern[];
-  debugNode?: DebugNode;
+  debugStack?: DebugStackEntry[];
 }
 
 /**

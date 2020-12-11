@@ -10,7 +10,7 @@ import { DatabaseItem, DatabaseManager } from '../../databases';
 import { CodeQLExtensionInterface } from '../../extension';
 import { dbLoc, storagePath } from './global.helper';
 import { importArchiveDatabase } from '../../databaseFetcher';
-import { compileAndRunQueryAgainstDatabase } from '../../run-queries';
+import { compileAndRunQueryAgainstDatabase, determineSelectedQuery } from '../../run-queries';
 import { CodeQLCliServer } from '../../cli';
 import { QueryServerClient } from '../../queryserver-client';
 
@@ -83,8 +83,7 @@ xdescribe('Queries', function() {
         cli,
         qs,
         dbItem,
-        false,
-        Uri.file(queryPath),
+        await determineSelectedQuery(Uri.file(queryPath), false),
         progress,
         token
       );

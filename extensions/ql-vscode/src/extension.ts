@@ -1,6 +1,7 @@
 import {
   CancellationToken,
   commands,
+  debug,
   Disposable,
   ExtensionContext,
   extensions,
@@ -54,11 +55,13 @@ import { QueryHistoryManager } from './query-history';
 import { CompletedQuery } from './query-results';
 import * as qsClient from './queryserver-client';
 import { displayQuickQuery } from './quick-query';
-import { compileAndRunQueryAgainstDatabase, tmpDirDisposal } from './run-queries';
+import { determineSelectedQuery, tmpDirDisposal } from './run-queries';
 import { QLTestAdapterFactory } from './test-adapter';
 import { TestUIService } from './test-ui';
 import { CompareInterfaceManager } from './compare/compare-interface';
 import { gatherQlFiles } from './pure/files';
+import { QLDebugAdapterDescriptorFactory } from './debugger';
+import { QueryRunnerUI } from './query-runner-ui';
 
 /**
  * extension.ts
@@ -379,8 +382,7 @@ async function activateWithInstalledDistribution(
   logger.log('Initializing query history manager.');
   const queryHistoryConfigurationListener = new QueryHistoryConfigListener();
   ctx.subscriptions.push(queryHistoryConfigurationListener);
-  const showResults = async (item: CompletedQuery) =>
-    showResultsForCompletedQuery(item, WebviewReveal.Forced);
+  const showResults = async (item: CompletedQuery) => intm.showResults(item, WebviewReveal.Forced, false);
 
   const qhm = new QueryHistoryManager(
     qs,
@@ -419,43 +421,11 @@ async function activateWithInstalledDistribution(
     }
   }
 
-  async function showResultsForCompletedQuery(
-    query: CompletedQuery,
-    forceReveal: WebviewReveal
-  ): Promise<void> {
-    await intm.showResults(query, forceReveal, false);
-  }
-
-  async function compileAndRunQuery(
-    quickEval: boolean,
-    selectedQuery: Uri | undefined,
-    progress: helpers.ProgressCallback,
-    token: CancellationToken,
-  ): Promise<void> {
-    if (qs !== undefined) {
-      const dbItem = await databaseUI.getDatabaseItem(progress, token);
-      if (dbItem === undefined) {
-        throw new Error('Can\'t run query without a selected database');
-      }
-      const info = await compileAndRunQueryAgainstDatabase(
-        cliServer,
-        qs,
-        dbItem,
-        quickEval,
-        selectedQuery,
-        progress,
-        token
-      );
-      const item = qhm.addQuery(info);
-      await showResultsForCompletedQuery(item, WebviewReveal.NotForced);
-      // The call to showResults potentially creates SARIF file;
-      // Update the tree item context value to allow viewing that
-      // SARIF file from context menu.
-      await qhm.updateTreeItemContextValue(item);
-    }
-  }
-
   ctx.subscriptions.push(tmpDirDisposal);
+
+  logger.log('Initializing query service.');
+  const queryRunnerUI = new QueryRunnerUI(intm, qhm, databaseUI, cliServer, qs);
+  ctx.subscriptions.push(queryRunnerUI);
 
   logger.log('Initializing CodeQL language server.');
   const client = new LanguageClient(
@@ -496,7 +466,7 @@ async function activateWithInstalledDistribution(
         progress: helpers.ProgressCallback,
         token: CancellationToken,
         uri: Uri | undefined
-      ) => await compileAndRunQuery(false, uri, progress, token),
+      ) => await queryRunnerUI.compileAndRunQuery(await determineSelectedQuery(uri, false), progress, token),
       {
         title: 'Running query',
         cancellable: true
@@ -558,7 +528,7 @@ async function activateWithInstalledDistribution(
         });
 
         await Promise.all(queryUris.map(async uri =>
-          compileAndRunQuery(false, uri, wrappedProgress, token)
+          queryRunnerUI.compileAndRunQuery(await determineSelectedQuery(uri, false), wrappedProgress, token)
             .then(() => queriesRemaining--)
         ));
       },
@@ -574,7 +544,7 @@ async function activateWithInstalledDistribution(
         progress: helpers.ProgressCallback,
         token: CancellationToken,
         uri: Uri | undefined
-      ) => await compileAndRunQuery(true, uri, progress, token),
+      ) => await queryRunnerUI.compileAndRunQuery(await determineSelectedQuery(uri, true), progress, token),
       {
         title: 'Running query',
         cancellable: true
@@ -668,6 +638,8 @@ async function activateWithInstalledDistribution(
     cancellable: true,
     title: 'Calculate AST'
   }));
+
+  ctx.subscriptions.push(debug.registerDebugAdapterDescriptorFactory('codeql', new QLDebugAdapterDescriptorFactory(queryRunnerUI)));
 
   commands.executeCommand('codeQLDatabases.removeOrphanedDatabases');
 

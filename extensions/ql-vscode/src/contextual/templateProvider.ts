@@ -6,7 +6,7 @@ import { DatabaseManager } from '../databases';
 import { CachedOperation, ProgressCallback, withProgress } from '../helpers';
 import * as messages from '../pure/messages';
 import { QueryServerClient } from '../queryserver-client';
-import { compileAndRunQueryAgainstDatabase, QueryWithResults } from '../run-queries';
+import { compileAndRunQueryAgainstDatabase, determineSelectedQuery, QueryWithResults } from '../run-queries';
 import AstBuilder from './astBuilder';
 import {
   KeyType,
@@ -182,8 +182,7 @@ export class TemplatePrintAstProvider {
       this.cli,
       this.qs,
       db,
-      false,
-      vscode.Uri.file(query),
+      await determineSelectedQuery(vscode.Uri.file(query), false),
       this.progress,
       this.token,
       templates
